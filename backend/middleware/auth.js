@@ -42,18 +42,18 @@ function requireAuth(req, res, next) {
   }
   const header = req.get('authorization') || '';
   const token = header.startsWith('Bearer ') ? header.slice(7) : '';
-  if (!token) return res.status(401).json({ success: false, message: 'Unauthorized' });
+  if (!token) return res.status(401).json({ error: { message: 'Authentication required.' } });
 
   let payload;
   try {
     payload = jwt.verify(token, req.app.locals.config.jwtSecret);
   } catch {
-    return res.status(401).json({ success: false, message: 'Unauthorized' });
+    return res.status(401).json({ error: { message: 'Session expired. Please sign in again.' } });
   }
 
   getUser(payload.id).then(user => {
     if (!user || user.role !== payload.role || user.status !== 'approved') {
-      return res.status(401).json({ success: false, message: 'Unauthorized' });
+      return res.status(401).json({ error: { message: 'Session is no longer valid. Please sign in again.' } });
     }
     req.user = { id: String(user._id), role: user.role, name: user.name };
     next();

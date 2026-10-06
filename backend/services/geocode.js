@@ -1,78 +1,45 @@
-const addressCache = new Map();
-let lastNominatimRequestAt = 0;
-let nominatimQueue = Promise.resolve();
-
-function cacheKey(lat, lng) {
-  return `${Number(lat).toFixed(6)},${Number(lng).toFixed(6)}`;
-}
-
-async function fetchGoogleAddress(config, lat, lng) {
-  if (!config.geocodingKey) return null;
-
-  const url = new URL('https://maps.googleapis.com/maps/api/geocode/json');
-  url.searchParams.set('latlng', `${lat},${lng}`);
-  url.searchParams.set('key', config.geocodingKey);
-  const response = await fetch(url, { signal: AbortSignal.timeout(10000) });
-  if (!response.ok) throw new Error(`Google reverse geocoding failed with status ${response.status}.`);
-  const data = await response.json();
-  if (data.status !== 'OK' || !data.results?.[0]?.formatted_address) return null;
-  return { address: data.results[0].formatted_address, provider: 'google' };
-}
-
-async function fetchNominatimAddress(lat, lng) {
-  const run = nominatimQueue.then(async () => {
-    const wait = Math.max(0, 1000 - (Date.now() - lastNominatimRequestAt));
-    if (wait) await new Promise(resolve => setTimeout(resolve, wait));
-
-    const url = new URL('https://nominatim.openstreetmap.org/reverse');
-    url.searchParams.set('format', 'jsonv2');
-    url.searchParams.set('addressdetails', '1');
-    url.searchParams.set('zoom', '18');
-    url.searchParams.set('lat', String(lat));
-    url.searchParams.set('lon', String(lng));
-    lastNominatimRequestAt = Date.now();
-    const response = await fetch(url, {
-      headers: { 'User-Agent': 'ARS-Rescue-System/1.0' },
-      signal: AbortSignal.timeout(10000)
-    });
-    if (!response.ok) throw new Error(`OpenStreetMap reverse geocoding failed with status ${response.status}.`);
-    const data = await response.json();
-    return data.display_name
-      ? { address: data.display_name, provider: 'openstreetmap' }
-      : null;
-  });
-  nominatimQueue = run.catch(() => {});
-  return run;
-}
+const cache = new Map();
 
 async function reverseGeocodeAddress(config, lat, lng) {
-  const key = cacheKey(lat, lng);
-  const cached = addressCache.get(key);
-  if (cached && cached.expiresAt > Date.now()) return cached.result;
+  const key = `${lat},${lng}`;
+  if (cache.has(key)) return cache.get(key);
 
-  let result = null;
-  if (config.geocodingKey) {
+  if (config && config.geocodingKey) {
     try {
-      result = await fetchGoogleAddress(config, lat, lng);
-    } catch (error) {
-      console.error('Google reverse geocoding failed:', error.message);
-    }
-  }
-  if (!result) {
-    try {
-      result = await fetchNominatimAddress(lat, lng);
-    } catch (error) {
-      console.error('OpenStreetMap reverse geocoding failed:', error.message);
-    }
+      const url = new URL('https://maps.googleapis.com/maps/api/geocode/json');
+      url.searchParams.set('latlng', `${lat},${lng}`);
+      url.searchParams.set('key', config.geocodingKey);
+      const response = await fetch(url);
+      if (response.ok) {
+        const data = await response.json();
+        if (data.status === 'OK' && data.results?.[0]?.formatted_address) {
+          const result = { address: data.results[0].formatted_address, provider: 'google' };
+          cache.set(key, result);
+          return result;
+        }
+      }
+    } catch (e) {}
   }
 
-  if (result) addressCache.set(key, { result, expiresAt: Date.now() + 24 * 60 * 60 * 1000 });
-  return result;
+  try {
+    const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`;
+    const response = await fetch(url, { headers: { 'User-Agent': 'ARS-Disaster-Rescue/1.0' } });
+    if (response.ok) {
+      const data = await response.json();
+      if (data && data.display_name) {
+        const result = { address: data.display_name, provider: 'openstreetmap' };
+        cache.set(key, result);
+        return result;
+      }
+    }
+  } catch (e) {}
+
+  return { address: 'Unknown location', provider: null };
 }
 
 async function reverseGeocode(config, lat, lng) {
-  const result = await reverseGeocodeAddress(config, lat, lng);
-  return result?.address || 'Unknown location';
+  const res = await reverseGeocodeAddress(config, lat, lng);
+  return res.address || 'Unknown location';
 }
 
 module.exports = { reverseGeocode, reverseGeocodeAddress };

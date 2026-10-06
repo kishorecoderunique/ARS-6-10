@@ -698,6 +698,21 @@
   font-size: 0.82rem;
 }
 
+.map-directions-origin {
+  margin: 6px 0 0;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+
+.map-directions-navigation {
+  display: inline-block;
+  margin-top: 10px;
+  color: var(--status-on-duty);
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-decoration: underline;
+}
+
 .map-directions-close {
   color: var(--text-secondary);
   font-size: 1.4rem;

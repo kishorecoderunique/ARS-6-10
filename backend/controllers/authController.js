@@ -49,7 +49,7 @@ async function login(req, res) {
   const validPassword = user
     ? await bcrypt.compare(password, user.passwordHash)
     : await bcrypt.compare(password, dummyPasswordHash);
-  if (!user || !validPassword) return res.status(401).json({ error: { message: 'Invalid mobile number or password' } });
+  if (!user || !validPassword) return res.status(401).json({ error: { message: 'Invalid phone number or password.' } });
   if (user.status === 'pending') return res.status(403).json({ error: { message: 'Your rescuer account is pending admin approval.' } });
   if (user.status === 'rejected') return res.status(403).json({ error: { message: 'Your rescuer account was not approved.' } });
   res.json({ token: issueToken(user, req.app.locals.config), user: publicUser(user) });

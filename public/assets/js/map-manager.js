@@ -19,6 +19,7 @@ window.ARS_MapManager = (function () {
   let mapUnavailable = false;
   let highlightedSosId = null;
   let highlightedRadarRadius = 0;
+  let locationLookupId = 0;
 
   const darkNavyMapStyle = [
     { "elementType": "geometry", "stylers": [{ "color": "#070D1A" }] },
@@ -339,13 +340,49 @@ window.ARS_MapManager = (function () {
       </div>
       <div style="font-family:var(--font-heading); font-weight:800; font-size:1.05rem; margin-bottom:4px;">${escapeHtml(sos.victimName)}</div>
       <div style="font-family:var(--font-mono); font-size:0.8rem; color:#9CA3AF; margin-bottom:8px;">${escapeHtml(sos.phone)}</div>
-      <div style="font-size:0.85rem; color:#E2E8F0; margin-bottom:6px;">📍 ${escapeHtml(sos.locationName)}</div>
-      <div style="font-family:var(--font-mono); font-size:0.75rem; color:#64748B;">Coords: ${sos.lat.toFixed(4)}, ${sos.lng.toFixed(4)}</div>
+      <div id="fallback-victim-address"></div>
     `;
 
     popup.style.left = `${Math.min(x + 10, container.clientWidth - 280)}px`;
     popup.style.top = `${Math.min(y - 80, container.clientHeight - 180)}px`;
     popup.style.display = 'block';
+    popup.dataset.sosId = sos.id;
+    const lookupId = ++locationLookupId;
+    renderVictimLocation(popup.querySelector('#fallback-victim-address'), sos, '📍 Getting victim address...');
+    lookupVictimAddress(sos).then(result => {
+      if (lookupId !== locationLookupId || popup.dataset.sosId !== sos.id || !popup.isConnected) return;
+      renderVictimLocation(popup.querySelector('#fallback-victim-address'), {
+        ...sos,
+        lat: result?.lat ?? sos.lat,
+        lng: result?.lng ?? sos.lng
+      }, result?.address || '⚠️ Address unavailable', result?.provider);
+    });
+  }
+
+  function renderVictimLocation(container, sos, address, provider = null) {
+    if (!container) return;
+    const escapeHtml = window.ARS_State.escapeHtml;
+    const lat = Number(sos.lat);
+    const lng = Number(sos.lng);
+    const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${lat},${lng}`)}`;
+    container.innerHTML = `
+      <div style="font-weight:800; margin:10px 0 6px;">🚨 VICTIM LOCATION</div>
+      <div style="font-size:0.85rem; margin-bottom:4px;">📍 Full Address:</div>
+      <div style="font-size:0.84rem; color:#E2E8F0; overflow-wrap:anywhere;">${escapeHtml(address)}</div>
+      ${provider === 'openstreetmap' ? '<div style="font-size:0.68rem; color:#94A3B8; margin-top:3px;">© OpenStreetMap contributors</div>' : ''}
+      <div style="font-size:0.82rem; margin-top:8px;">🌐 Coordinates:</div>
+      <div style="font-family:var(--font-mono); font-size:0.75rem; color:#CBD5E1;">Latitude: ${escapeHtml(String(sos.lat))}<br>Longitude: ${escapeHtml(String(sos.lng))}</div>
+      <a href="${mapsUrl}" target="_blank" rel="noopener noreferrer" style="display:inline-block; margin-top:10px; padding:7px 10px; border-radius:8px; background:#E10600; color:#fff; text-decoration:none; font-size:0.75rem; font-weight:700;">OPEN IN MAPS</a>
+    `;
+  }
+
+  async function lookupVictimAddress(sos) {
+    try {
+      return await window.ARS_API.request(`/sos/${encodeURIComponent(sos.id)}/location`);
+    } catch (error) {
+      console.error('Victim address lookup failed:', error.message);
+      return null;
+    }
   }
 
   function updateMarkers() {
@@ -373,20 +410,37 @@ window.ARS_MapManager = (function () {
           }
         });
 
-        const infoWindow = new google.maps.InfoWindow({
-          content: `
-            <div style="color: #0F1A2E; font-family: sans-serif; padding: 6px; width: 220px;">
-              <div style="font-weight: 800; font-size: 1.05rem;">${escapeHtml(sos.victimName)}</div>
-              <div style="font-family: monospace; color: #475569; font-size: 0.85rem;">${escapeHtml(sos.phone)}</div>
-              <div style="font-size: 0.85rem; margin-top: 4px;">📍 ${escapeHtml(sos.locationName)}</div>
-              <div style="font-family: monospace; font-size: 0.75rem; color: #64748B; margin-top: 4px;">(${sos.lat.toFixed(4)}, ${sos.lng.toFixed(4)})</div>
-            </div>
-          `
-        });
+        const infoWindow = new google.maps.InfoWindow();
 
         marker.addListener('click', () => {
           highlightedSosId = sos.id;
+          const lookupId = ++locationLookupId;
+          const content = document.createElement('div');
+          renderVictimLocation(content, sos, '📍 Getting victim address...');
+          infoWindow.setContent(`
+            <div style="color:#0F1A2E; font-family:sans-serif; padding:6px; width:260px;">
+              <div style="font-weight:800; font-size:1.05rem;">${escapeHtml(sos.victimName)}</div>
+              <div style="font-family:monospace; color:#475569; font-size:0.85rem;">${escapeHtml(sos.phone)}</div>
+              ${content.innerHTML}
+            </div>
+          `);
           infoWindow.open(googleMap, marker);
+          lookupVictimAddress(sos).then(result => {
+            if (lookupId !== locationLookupId) return;
+            const addressContent = document.createElement('div');
+            renderVictimLocation(addressContent, {
+              ...sos,
+              lat: result?.lat ?? sos.lat,
+              lng: result?.lng ?? sos.lng
+            }, result?.address || '⚠️ Address unavailable', result?.provider);
+            infoWindow.setContent(`
+              <div style="color:#0F1A2E; font-family:sans-serif; padding:6px; width:260px;">
+                <div style="font-weight:800; font-size:1.05rem;">${escapeHtml(sos.victimName)}</div>
+                <div style="font-family:monospace; color:#475569; font-size:0.85rem;">${escapeHtml(sos.phone)}</div>
+                ${addressContent.innerHTML}
+              </div>
+            `);
+          });
           if (onMarkerClickCallback) onMarkerClickCallback(sos);
         });
 
@@ -474,31 +528,36 @@ window.ARS_MapManager = (function () {
       return;
     }
 
-    const currentUser = window.ARS_State.getCurrentUser();
-    const rescuer = window.ARS_State.getRescuers().find(item => currentUser && item.id === currentUser.id);
-    const origin = rescuer && Number.isFinite(Number(rescuer.lat)) && Number.isFinite(Number(rescuer.lng))
-      ? { lat: Number(rescuer.lat), lng: Number(rescuer.lng) }
-      : window.ARS_CONFIG.DEFAULT_MAP_CENTER;
     const destination = { lat: Number(sos.lat), lng: Number(sos.lng) };
     const requestId = ++directionsRequestId;
 
-    showDirectionsPanelMessage(`Finding a driving route to ${sos.locationName}...`);
+    showDirectionsPanelMessage('Getting your current location and finding the fastest driving route...');
     clearDirections();
     try {
+      const currentUser = window.ARS_State.getCurrentUser();
+      const rescuer = window.ARS_State.getRescuers().find(item => currentUser && item.id === currentUser.id);
+      const { origin, source } = await getRouteOrigin(rescuer);
+      if (requestId !== directionsRequestId) return;
+
       const { Route } = await google.maps.importLibrary('routes');
       const { routes } = await Route.computeRoutes({
         origin,
         destination,
         travelMode: 'DRIVING',
-        fields: ['path', 'viewport', 'legs', 'distanceMeters', 'durationMillis']
+        routingPreference: 'TRAFFIC_AWARE_OPTIMAL',
+        computeAlternativeRoutes: true,
+        fields: ['path', 'viewport', 'legs', 'distanceMeters', 'durationMillis', 'staticDurationMillis']
       });
       if (requestId !== directionsRequestId) return;
       if (!routes || routes.length === 0) {
-        showDirectionsPanelMessage('No driving route was found for this destination.');
+        showDirectionsPanelMessage('No driving route was found for this destination.', sos, origin);
         return;
       }
 
-      const route = routes[0];
+      const route = [...routes].sort((a, b) =>
+        (a.durationMillis ?? a.legs?.[0]?.durationMillis ?? Number.MAX_SAFE_INTEGER) -
+        (b.durationMillis ?? b.legs?.[0]?.durationMillis ?? Number.MAX_SAFE_INTEGER)
+      )[0];
       directionsPolylines = route.createPolylines();
       directionsPolylines.forEach(polyline => {
         polyline.setOptions({
@@ -523,12 +582,81 @@ window.ARS_MapManager = (function () {
           strokeWeight: 2
         }
       }));
-      renderDirectionsPanel(sos, route.legs && route.legs[0]);
+      renderDirectionsPanel(sos, route.legs && route.legs[0], origin, source);
     } catch (error) {
       if (requestId !== directionsRequestId) return;
-      console.error('Google Maps Routes request failed.', error);
-      showDirectionsPanelMessage('Could not calculate a route. Check that the Routes API is enabled for your Google Maps key.');
+      console.error('Could not calculate the fastest route to the SOS.', error);
+      showDirectionsPanelMessage(error.message || 'Could not calculate a route. Open navigation in Google Maps instead.', sos);
     }
+  }
+
+  async function getRouteOrigin(rescuer) {
+    if (navigator.geolocation) {
+      try {
+        const position = await new Promise((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            enableHighAccuracy: true,
+            timeout: 12000,
+            maximumAge: 0
+          });
+        });
+        return {
+          origin: { lat: position.coords.latitude, lng: position.coords.longitude },
+          source: 'current'
+        };
+      } catch (error) {
+        const hasSavedLocation = hasValidRescuerLocation(rescuer);
+        if (hasSavedLocation) {
+          return {
+            origin: { lat: Number(rescuer.lat), lng: Number(rescuer.lng) },
+            source: 'saved'
+          };
+        }
+        if (error.code === error.PERMISSION_DENIED) {
+          throw new Error('Location permission is required to calculate your route. Allow location access, or open Google Maps navigation below.');
+        }
+        throw new Error('Your current location is unavailable. Open Google Maps navigation below to route from your device.');
+      }
+    }
+
+    if (hasValidRescuerLocation(rescuer)) {
+      return {
+        origin: { lat: Number(rescuer.lat), lng: Number(rescuer.lng) },
+        source: 'saved'
+      };
+    }
+    throw new Error('This browser cannot provide your location. Open Google Maps navigation below to route from your device.');
+  }
+
+  function hasValidRescuerLocation(rescuer) {
+    if (!rescuer || rescuer.lat == null || rescuer.lng == null) return false;
+    const lat = Number(rescuer.lat);
+    const lng = Number(rescuer.lng);
+    return Number.isFinite(lat) && lat >= -90 && lat <= 90
+      && Number.isFinite(lng) && lng >= -180 && lng <= 180;
+  }
+
+  function createGoogleMapsDirectionsUrl(sos, origin = null) {
+    const url = new URL('https://www.google.com/maps/dir/');
+    url.searchParams.set('api', '1');
+    if (origin) {
+      url.searchParams.set('origin', `${Number(origin.lat)},${Number(origin.lng)}`);
+    }
+    url.searchParams.set('destination', `${Number(sos.lat)},${Number(sos.lng)}`);
+    url.searchParams.set('travelmode', 'driving');
+    url.searchParams.set('dir_action', 'navigate');
+    return url.toString();
+  }
+
+  function appendGoogleMapsDirectionsLink(panel, sos, origin = null) {
+    if (!panel || !sos) return;
+    const link = document.createElement('a');
+    link.href = createGoogleMapsDirectionsUrl(sos, origin);
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.className = 'map-directions-navigation';
+    link.textContent = 'Open directions in Google Maps';
+    panel.appendChild(link);
   }
 
   function clearDirections() {
@@ -553,7 +681,7 @@ window.ARS_MapManager = (function () {
     return panel;
   }
 
-  function showDirectionsPanelMessage(message) {
+  function showDirectionsPanelMessage(message, sos = null, origin = null) {
     const panel = getDirectionsPanel();
     if (!panel) return;
     panel.replaceChildren();
@@ -561,13 +689,14 @@ window.ARS_MapManager = (function () {
     text.className = 'map-directions-message';
     text.textContent = message;
     panel.appendChild(text);
+    appendGoogleMapsDirectionsLink(panel, sos, origin);
   }
 
-  function renderDirectionsPanel(sos, leg) {
+  function renderDirectionsPanel(sos, leg, origin, source) {
     const panel = getDirectionsPanel();
     if (!panel) return;
     if (!leg) {
-      showDirectionsPanelMessage('The route was found, but step-by-step directions are unavailable.');
+      showDirectionsPanelMessage('The route was found, but step-by-step directions are unavailable.', sos, origin);
       return;
     }
 
@@ -576,14 +705,17 @@ window.ARS_MapManager = (function () {
     header.className = 'map-directions-header';
     const destination = document.createElement('div');
     destination.className = 'map-directions-destination';
-    destination.textContent = `Route to ${sos.locationName}`;
+    const destinationName = sos.locationName && sos.locationName !== 'Current GPS location'
+      ? sos.locationName
+      : sos.victimName;
+    destination.textContent = `Route to ${destinationName}`;
     const summary = document.createElement('div');
     summary.className = 'map-directions-summary';
     const distance = leg.distanceMeters >= 1000
       ? `${(leg.distanceMeters / 1000).toFixed(1)} km`
       : `${leg.distanceMeters} m`;
     const duration = `${Math.ceil(leg.durationMillis / 60000)} min`;
-    summary.textContent = `${distance} · ${duration}`;
+    summary.textContent = `Fastest driving route · ${distance} · ${duration} · traffic-aware`;
     const closeButton = document.createElement('button');
     closeButton.type = 'button';
     closeButton.className = 'map-directions-close';
@@ -595,7 +727,12 @@ window.ARS_MapManager = (function () {
       panel.remove();
     });
     header.append(destination, closeButton);
-    panel.append(header, summary);
+    const originNote = document.createElement('p');
+    originNote.className = 'map-directions-origin';
+    originNote.textContent = source === 'current'
+      ? 'Route starts from your current GPS location.'
+      : 'Route starts from your last saved rescuer location.';
+    panel.append(header, summary, originNote);
 
     const steps = document.createElement('ol');
     steps.className = 'map-directions-steps';
@@ -605,6 +742,7 @@ window.ARS_MapManager = (function () {
       steps.appendChild(item);
     });
     panel.appendChild(steps);
+    appendGoogleMapsDirectionsLink(panel, sos, origin);
   }
 
   function hexToRgba(hex, alpha) {

@@ -1,23 +1,23 @@
 require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
 
 const http = require('http');
+const fs = require('fs/promises');
 const path = require('path');
 const express = require('express');
 const helmet = require('helmet');
 const cors = require('cors');
 const { Server } = require('socket.io');
 const { loadEnv } = require('./config/env');
-const { connectDatabase, isDatabaseConnected } = require('./config/db');
+const { connectDatabase } = require('./config/db');
 const { configureSockets } = require('./sockets');
 const { notFound, errorHandler } = require('./middleware/errorHandler');
 
-function createApplication(config = loadEnv()) {
+function createApplication(config) {
   const app = express();
   const server = http.createServer(app);
   const io = new Server(server, {
     cors: { origin: config.frontendUrl, methods: ['GET', 'POST', 'PATCH'] }
   });
-  server.app = app;
   app.locals.config = config;
   app.set('io', io);
   configureSockets(io, config.jwtSecret, config);
@@ -29,44 +29,58 @@ function createApplication(config = loadEnv()) {
       if (!origin || origin === config.frontendUrl) return callback(null, true);
       const error = new Error('Origin is not allowed by CORS.');
       error.statusCode = 403;
-      return callback(error);
+      callback(error);
     }
   }));
   app.use(express.json({ limit: '32kb' }));
 
-  app.get('/api/health', (req, res) => {
-    const connected = isDatabaseConnected();
-    return res.status(connected ? 200 : 503).json({
-      ok: connected,
-      db: connected ? 'connected' : 'disconnected',
-      ...(connected ? {} : { message: 'Supabase database is not connected.' })
-    });
-  });
   app.use('/api', (req, res, next) => {
-    const apiGroup = req.path.split('/')[1];
-    if (!['auth', 'sos', 'admin', 'notifications', 'users'].includes(apiGroup)) return next();
-    if (isDatabaseConnected()) return next();
-    return res.status(503).json({ error: { message: 'Database is not connected. Check the server configuration and try again.' } });
+    if (!databaseReady) {
+      databaseReady = connectDatabase(config).catch(error => {
+        databaseReady = null;
+        throw error;
+      });
+    }
+    databaseReady.then(() => next()).catch(next);
   });
   app.use('/api/auth', require('./routes/authRoutes'));
   app.use('/api/sos', require('./routes/sosRoutes'));
   app.use('/api/admin', require('./routes/adminRoutes'));
   app.use('/api/notifications', require('./routes/notificationRoutes'));
   app.use('/api/users', require('./routes/userRoutes'));
-  app.use('/api', (req, res) => res.status(404).json({ message: 'Route not found' }));
+  app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
 
   const frontendRoot = path.join(__dirname, '..');
-  for (const directory of ['assets', 'data', 'login', 'rescuer', 'admin', 'trigger-sos']) {
-    app.use(`/${directory}`, express.static(path.join(frontendRoot, directory), {
-      fallthrough: true,
-      index: 'index.html'
-    }));
+  let databaseReady;
+  if (config.localDemoMode) {
+    app.get('/login/index.html', (req, res) => res.redirect('/admin/index.html'));
   }
-  app.get('/', (req, res, next) => {
-    res.sendFile(path.join(frontendRoot, 'index.html'), error => {
-      if (error) next(error);
+  ['/assets', '/data', '/login', '/rescuer', '/admin', '/trigger-sos'].forEach(route => {
+    const directory = path.join(frontendRoot, route.slice(1));
+    app.use(route, async (req, res, next) => {
+      let filePath = path.resolve(directory, `.${req.path}`);
+      if (filePath !== directory && !filePath.startsWith(`${directory}${path.sep}`)) return next();
+      try {
+        let fileStat = await fs.stat(filePath);
+        if (fileStat.isDirectory()) {
+          filePath = path.join(filePath, 'index.html');
+          fileStat = await fs.stat(filePath);
+        }
+        if (!fileStat.isFile()) return next();
+        res.sendFile(filePath, error => {
+          if (error) next(error);
+        });
+      } catch (error) {
+        if (error.code === 'ENOENT' || error.code === 'ENOTDIR') return next();
+        next(error);
+      }
     });
   });
+  if (config.localDemoMode) {
+    app.get('/', (req, res) => res.redirect('/admin/index.html'));
+  } else {
+    app.get('/', (req, res) => res.sendFile(path.join(frontendRoot, 'index.html')));
+  }
 
   app.use(notFound);
   app.use(errorHandler);
@@ -75,23 +89,18 @@ function createApplication(config = loadEnv()) {
 
 async function startServer() {
   const config = loadEnv();
+  await connectDatabase(config);
   const server = createApplication(config);
-  server.listen(config.port, () => {
-    console.log(`ARS server listening at http://localhost:${config.port}`);
+  const host = config.localDemoMode ? '127.0.0.1' : undefined;
+  server.listen(config.port, host, () => {
+    const mode = config.localDemoMode ? ' (LOCAL DEMO MODE; authentication disabled)' : '';
+    console.log(`ARS server listening on ${host || 'all interfaces'}:${config.port}${mode}.`);
   });
-
-  try {
-    await connectDatabase(config);
-    console.log('Supabase connected.');
-  } catch (error) {
-    console.error(error.message);
-  }
-
   const shutdown = () => {
     server.close(() => process.exit(0));
   };
-  process.once('SIGINT', shutdown);
-  process.once('SIGTERM', shutdown);
+  process.on('SIGINT', shutdown);
+  process.on('SIGTERM', shutdown);
   return server;
 }
 

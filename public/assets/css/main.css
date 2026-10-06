@@ -15,7 +15,7 @@
   --siren-red: #E10600;          /* SIGNAL ONLY: buttons, alerts, High severity */
   --siren-red-glow: rgba(225, 6, 0, 0.35);
   --siren-red-hover: #C00500;
-  
+
   /* Severity Palette */
   --severity-high: #E10600;
   --severity-high-glow: rgba(225, 6, 0, 0.4);
@@ -69,7 +69,7 @@
   --bg-input: #0A1324;
   --border-color: var(--grid-line);
   --border-color-hover: rgba(225, 6, 0, 0.5);
-  
+
   --topbar-bg: rgba(15, 26, 46, 0.9);
   --sidebar-bg: var(--panel-navy);
   --card-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);

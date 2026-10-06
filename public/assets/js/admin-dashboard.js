@@ -36,13 +36,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   const severityFilterElem = document.getElementById('severity-filter');
   const statusFilterElem = document.getElementById('status-filter');
 
-  // Section Views & Badges
-  const overviewMetricsSection = document.getElementById('overview-metrics-section');
-  const pendingApprovalsSection = document.getElementById('pending-approvals-section');
-  const activeRescuersSection = document.getElementById('active-rescuers-section');
-  const sosTableSection = document.getElementById('sos-table-section');
-  const pendingRescuerBadgeElem = document.getElementById('pending-rescuer-badge');
-
   // Sidebar Tabs
   const sidebarItems = document.querySelectorAll('.sidebar-item');
   sidebarItems.forEach(item => {
@@ -131,14 +124,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     renderRescuerRoster();
     renderPendingApprovals();
     renderSosTable();
-    renderTabVisibility();
-  }
-
-  function renderTabVisibility() {
-    if (overviewMetricsSection) overviewMetricsSection.style.display = currentTab === 'overview' ? 'grid' : 'none';
-    if (sosTableSection) sosTableSection.style.display = currentTab === 'overview' ? 'block' : 'none';
-    if (pendingApprovalsSection) pendingApprovalsSection.style.display = currentTab === 'pending_approval' ? 'block' : 'none';
-    if (activeRescuersSection) activeRescuersSection.style.display = currentTab === 'active_rescuers' ? 'block' : 'none';
   }
 
   function updateMetrics() {
@@ -149,12 +134,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     const acceptedCount = sosList.filter(s => ['accepted', 'en_route', 'reached'].includes(s.status)).length;
     const resolvedCount = sosList.filter(s => s.status === 'resolved').length;
     const onDutyCount = rescuers.filter(r => ['on_duty', 'on_case'].includes(r.status)).length;
-
-    const pendingRescuers = rescuers.filter(r => r.status === 'pending_approval');
-    if (pendingRescuerBadgeElem) {
-      pendingRescuerBadgeElem.textContent = pendingRescuers.length;
-      pendingRescuerBadgeElem.style.display = pendingRescuers.length > 0 ? 'inline-flex' : 'none';
-    }
 
     if (activeCountElem) activeCountElem.textContent = `${pendingCount} Pending`;
 
@@ -232,14 +211,9 @@ document.addEventListener('DOMContentLoaded', async () => {
           <div style="font-weight: 700;">${escapeHtml(r.name)}</div>
           <div style="font-family: var(--font-mono); font-size: 0.8rem; color: var(--text-secondary);">${escapeHtml(r.phone)}</div>
         </div>
-        <div style="display: flex; gap: 8px;">
-          <button class="btn-primary" style="padding: 6px 14px; font-size: 0.8rem; background-color: var(--status-on-duty, #19D3A2);" onclick="window.ARS_AdminDash.approve('${r.id}')">
-            Approve
-          </button>
-          <button class="btn-primary" style="padding: 6px 14px; font-size: 0.8rem; background-color: var(--siren-red, #E10600);" onclick="window.ARS_AdminDash.reject('${r.id}')">
-            Reject
-          </button>
-        </div>
+        <button class="btn-primary" style="padding: 8px 16px; font-size: 0.8rem;" onclick="window.ARS_AdminDash.approve('${r.id}')">
+          Approve User
+        </button>
       </div>
     `).join('');
   }
@@ -300,11 +274,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   window.ARS_AdminDash = {
     approve: (rescuerId) => {
       window.ARS_State.approveRescuer(rescuerId);
-    },
-    reject: (rescuerId) => {
-      if (confirm('Are you sure you want to reject this rescuer application?')) {
-        window.ARS_State.rejectRescuer(rescuerId);
-      }
     },
     reassign: (sosId, newRescuerId) => {
       window.ARS_State.reassignSos(sosId, newRescuerId);

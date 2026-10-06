@@ -1,3 +1,15 @@
 {
-  "buildCommand": "npm run build"
+  "functions": {
+    "server.js": {
+      "includeFiles": [
+        "assets/**",
+        "data/**",
+        "index.html",
+        "login/**",
+        "admin/**",
+        "rescuer/**",
+        "trigger-sos/**"
+      ]
+    }
+  }
 }

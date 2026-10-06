@@ -27,7 +27,6 @@ const schemas = {
     victimPhone: phone,
     lat: z.coerce.number().min(-90).max(90),
     lng: z.coerce.number().min(-180).max(180),
-    locationName: z.string().trim().min(1).max(200).optional(),
     severity: z.enum(['High', 'Medium', 'Low', 'high', 'medium', 'low']),
     description: z.string().trim().min(5).max(1000)
   }) }),

@@ -8,8 +8,8 @@
   <link rel="stylesheet" href="../assets/css/main.css">
   <link rel="stylesheet" href="../assets/css/auth.css">
   <script src="/socket.io/socket.io.js"></script>
-  <script src="../assets/api.js?v=3"></script>
   <script src="../assets/js/config.js"></script>
+  <script src="../assets/api.js?v=4"></script>
   <script src="../assets/js/app-state.js"></script>
 </head>
 <body style="background-color: var(--bg-app); display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 20px;">
@@ -34,28 +34,19 @@
       </div>
 
       <div class="form-group">
-        <label for="preset-location">Select Preset Chennai Emergency Location</label>
-        <select id="preset-location" class="form-control" style="padding-left: 16px;">
-          <option value="custom">Custom Location (Enter Lat & Lng below)</option>
-          <option value="Velachery Main Road (Near Railway Station)" data-lat="12.9759" data-lng="80.2212" selected>Velachery Main Road (12.9759, 80.2212)</option>
-          <option value="Marina Beach (Light House Promenade)" data-lat="13.0380" data-lng="80.2785">Marina Beach Lighthouse (13.0380, 80.2785)</option>
-          <option value="Ranganathan Street, T. Nagar" data-lat="13.0418" data-lng="80.2341">Ranganathan St, T. Nagar (13.0418, 80.2341)</option>
-          <option value="Guindy Industrial Estate" data-lat="13.0067" data-lng="80.2020">Guindy Industrial Estate (13.0067, 80.2020)</option>
-          <option value="Besant Avenue, Adyar" data-lat="13.0012" data-lng="80.2565">Besant Ave, Adyar (13.0012, 80.2565)</option>
-          <option value="Mylapore Kapaleeshwarar Tank" data-lat="13.0339" data-lng="80.2694">Mylapore Tank Area (13.0339, 80.2694)</option>
-          <option value="Tambaram West Railway Colony" data-lat="12.9249" data-lng="80.1000">Tambaram Railway Colony (12.9249, 80.1000)</option>
-          <option value="Anna Nagar Tower Park Area" data-lat="13.0850" data-lng="80.2101">Anna Nagar Tower Park (13.0850, 80.2101)</option>
-        </select>
+        <label>Victim GPS Location</label>
+        <button type="button" id="get-current-location-btn" class="btn-secondary" style="width: 100%; padding: 10px 16px;">📍 Get Current GPS Location</button>
+        <div id="gps-location-status" role="status" style="margin-top: 6px; color: var(--text-secondary); font-size: 0.82rem;">Your device location is required to send this SOS.</div>
       </div>
 
       <div style="display: flex; gap: 12px;">
         <div class="form-group" style="flex: 1;">
           <label for="custom-lat">Latitude</label>
-          <input type="number" step="any" id="custom-lat" class="form-control" value="12.9759" style="padding-left: 16px; font-family: var(--font-mono);" required>
+          <input type="number" step="any" id="custom-lat" class="form-control" placeholder="Retrieved from device GPS" style="padding-left: 16px; font-family: var(--font-mono);" readonly required>
         </div>
         <div class="form-group" style="flex: 1;">
           <label for="custom-lng">Longitude</label>
-          <input type="number" step="any" id="custom-lng" class="form-control" value="80.2212" style="padding-left: 16px; font-family: var(--font-mono);" required>
+          <input type="number" step="any" id="custom-lng" class="form-control" placeholder="Retrieved from device GPS" style="padding-left: 16px; font-family: var(--font-mono);" readonly required>
         </div>
       </div>
 
@@ -86,17 +77,50 @@
 
   <script>
     document.addEventListener('DOMContentLoaded', () => {
-      const presetSelect = document.getElementById('preset-location');
       const latInput = document.getElementById('custom-lat');
       const lngInput = document.getElementById('custom-lng');
       const form = document.getElementById('trigger-sos-form');
       const alertContainer = document.getElementById('trigger-alert');
+      const locationButton = document.getElementById('get-current-location-btn');
+      const locationStatus = document.getElementById('gps-location-status');
 
-      presetSelect.addEventListener('change', () => {
-        const opt = presetSelect.options[presetSelect.selectedIndex];
-        if (opt.value !== 'custom') {
-          latInput.value = opt.dataset.lat;
-          lngInput.value = opt.dataset.lng;
+      function getCurrentPosition() {
+        if (!navigator.geolocation) {
+          return Promise.reject(new Error('This browser does not support GPS location.'));
+        }
+        return new Promise((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(
+            resolve,
+            error => {
+              const message = error.code === error.PERMISSION_DENIED
+                ? 'Location permission was denied. Allow location access and try again.'
+                : error.code === error.TIMEOUT
+                  ? 'Could not get your GPS location in time. Please try again.'
+                  : 'Your current GPS location is unavailable. Please try again.';
+              reject(new Error(message));
+            },
+            { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+          );
+        });
+      }
+
+      async function refreshGpsLocation() {
+        locationStatus.textContent = 'Getting your current GPS location...';
+        const position = await getCurrentPosition();
+        latInput.value = String(position.coords.latitude);
+        lngInput.value = String(position.coords.longitude);
+        locationStatus.textContent = 'Current GPS location retrieved.';
+        return position;
+      }
+
+      locationButton.addEventListener('click', async () => {
+        locationButton.disabled = true;
+        try {
+          await refreshGpsLocation();
+        } catch (error) {
+          locationStatus.textContent = error.message;
+        } finally {
+          locationButton.disabled = false;
         }
       });
 
@@ -104,12 +128,13 @@
         e.preventDefault();
         const victimName = document.getElementById('victim-name').value.trim();
         const victimPhone = document.getElementById('victim-phone').value.trim();
-        const lat = parseFloat(latInput.value);
-        const lng = parseFloat(lngInput.value);
         const severity = document.getElementById('sos-severity').value;
         const description = document.getElementById('sos-desc').value.trim();
 
         try {
+          const position = await refreshGpsLocation();
+          const lat = position.coords.latitude;
+          const lng = position.coords.longitude;
           const response = await window.ARS_API.request('/sos', {
             method: 'POST',
             body: {
@@ -117,6 +142,7 @@
               victimPhone,
               lat,
               lng,
+              locationName: 'Current GPS location',
               severity: severity[0].toUpperCase() + severity.slice(1),
               description
             }
@@ -124,6 +150,7 @@
           alertContainer.className = 'alert-message active alert-success';
           alertContainer.textContent = `🚨 SOS Signal ${response.sos.id} broadcast successfully. Open the dashboards to see the live update.`;
         } catch (error) {
+          locationStatus.textContent = error.message;
           alertContainer.className = 'alert-message active alert-error';
           alertContainer.textContent = error.message;
         }

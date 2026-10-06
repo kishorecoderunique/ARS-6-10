@@ -8,7 +8,6 @@ function loadEnv() {
   if (process.env.JWT_SECRET.length < 32) {
     throw new Error('JWT_SECRET must be at least 32 characters long.');
   }
-
   let supabaseUrl;
   try {
     supabaseUrl = new URL(process.env.SUPABASE_URL);
@@ -19,26 +18,19 @@ function loadEnv() {
     throw new Error('SUPABASE_URL must use HTTP or HTTPS.');
   }
 
-  const port = Number(process.env.PORT || 5000);
-  if (!Number.isInteger(port) || port < 1 || port > 65535) {
-    throw new Error('PORT must be a valid port number between 1 and 65535.');
-  }
-
-  let frontendUrl;
-  try {
-    frontendUrl = new URL(process.env.FRONTEND_URL || `http://localhost:${port}`).origin;
-  } catch {
-    throw new Error('FRONTEND_URL must be a valid URL.');
-  }
-
+  const nodeEnv = process.env.NODE_ENV || 'development';
   return {
-    port,
+    nodeEnv,
+    port: Number(process.env.PORT || 8000),
+    localDemoMode: process.env.LOCAL_DEMO_MODE === 'true',
     supabaseUrl: supabaseUrl.toString().replace(/\/$/, ''),
     supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
     jwtSecret: process.env.JWT_SECRET,
     jwtExpiresIn: process.env.JWT_EXPIRES_IN || '7d',
-    smsProvider: process.env.SMS_PROVIDER || 'console',
-    frontendUrl,
+    smsProvider: process.env.SMS_PROVIDER || (nodeEnv === 'development' ? 'console' : 'twilio'),
+    smsApiKey: process.env.SMS_API_KEY || '',
+    smsFrom: process.env.SMS_FROM || '',
+    frontendUrl: process.env.FRONTEND_URL || 'http://localhost:8000',
     geocodingKey: process.env.GOOGLE_GEOCODING_KEY || ''
   };
 }

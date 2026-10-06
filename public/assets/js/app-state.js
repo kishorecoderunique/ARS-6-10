@@ -75,26 +75,6 @@ window.ARS_State = (function () {
 
   async function bootstrap(requiredRole) {
     if (bootstrapped && currentUser?.role === requiredRole) return true;
-    if (window.ARS_API.isLocalDemoMode()) {
-      window.ARS_API.setDemoUser(requiredRole);
-      try {
-        const response = await window.ARS_API.request('/auth/me');
-        currentUser = response.user;
-        window.ARS_API.setDemoUser(requiredRole, currentUser.id);
-        await refreshData(currentUser.role);
-        bootstrapped = true;
-        const socket = window.ARS_API.connectSocket();
-        if (socket) {
-          ['sos:new', 'sos:accepted', 'sos:status', 'rescuer:duty', 'notification:new'].forEach(eventName => {
-            socket.on(eventName, () => refreshData(currentUser.role).catch(reportError));
-          });
-        }
-        return true;
-      } catch (error) {
-        reportError(error);
-        return false;
-      }
-    }
     const savedUser = JSON.parse(localStorage.getItem('ars_user_data') || 'null');
     if (!localStorage.getItem('ars_jwt') || !savedUser) {
       redirectToLogin(requiredRole);
@@ -190,7 +170,7 @@ window.ARS_State = (function () {
   }
 
   function getCurrentUser() {
-    if (!localStorage.getItem('ars_jwt') && !window.ARS_API.isLocalDemoMode()) return null;
+    if (!localStorage.getItem('ars_jwt')) return null;
     if (currentUser) return currentUser;
     currentUser = JSON.parse(localStorage.getItem('ars_user_data') || 'null');
     return currentUser;
@@ -247,7 +227,7 @@ window.ARS_State = (function () {
     escapeHtml,
     requireAuth(role) {
       const user = getCurrentUser();
-      if (!user || (!localStorage.getItem('ars_jwt') && !window.ARS_API.isLocalDemoMode())) {
+      if (!user || !localStorage.getItem('ars_jwt')) {
         redirectToLogin(role);
         return false;
       }

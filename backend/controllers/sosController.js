@@ -1,12 +1,14 @@
 const { getSos, listSos, createSos, updateSosConditional, findUser, listUsers } = require('../services/data');
-const { reverseGeocode, reverseGeocodeAddress } = require('../services/geocode');
+const { reverseGeocode } = require('../services/geocode');
 const { createNotifications } = require('../services/notifications');
+const { decryptMessage } = require('../utils/decryption');
 
 const severityOrder = { High: 0, Medium: 1, Low: 2 };
 const transitions = { accepted: 'en_route', en_route: 'reached', reached: 'resolved' };
 
-function serializeSos(sos) {
+function serializeSos(sos, options = {}) {
   const item = sos.toObject ? sos.toObject() : sos;
+  const description = options.decrypt ? decryptMessage(item.description) : item.description;
   return {
     ...item,
     id: String(item._id),
@@ -15,7 +17,8 @@ function serializeSos(sos) {
     timestamp: new Date(item.triggeredAt).getTime(),
     assignedRescuerId: item.acceptedBy?._id ? String(item.acceptedBy._id) : item.acceptedBy ? String(item.acceptedBy) : null,
     assignedRescuerName: item.acceptedBy?.name || null,
-    severity: String(item.severity).toLowerCase()
+    severity: String(item.severity).toLowerCase(),
+    description
   };
 }
 
@@ -28,17 +31,13 @@ async function list(req, res) {
     severityOrder[a.severity] - severityOrder[b.severity] ||
     new Date(b.triggeredAt) - new Date(a.triggeredAt)
   );
-  res.json({ sos: records.map(serializeSos) });
+  const isAdmin = req.user && req.user.role === 'admin';
+  res.json({ sos: records.map(record => serializeSos(record, { decrypt: isAdmin })) });
 }
 
 async function create(req, res) {
   const input = req.validated.body;
-  const geocodedLocation = req.app.locals.config.geocodingKey
-    ? await reverseGeocode(req.app.locals.config, input.lat, input.lng)
-    : '';
-  const locationName = geocodedLocation && geocodedLocation !== 'Unknown location'
-    ? geocodedLocation
-    : input.locationName || 'Unknown location';
+  const locationName = await reverseGeocode(req.app.locals.config, input.lat, input.lng);
   const now = new Date().toISOString();
   const sos = await createSos({
     victimName: input.victimName,
@@ -71,19 +70,6 @@ async function create(req, res) {
 async function mine(req, res) {
   const records = await listSos({ acceptedBy: req.user.id });
   res.json({ sos: records.map(serializeSos) });
-}
-
-async function location(req, res) {
-  const sos = await getSos(req.validated.params.id);
-  if (!sos) return res.status(404).json({ error: { message: 'SOS not found.' } });
-
-  const result = await reverseGeocodeAddress(req.app.locals.config, sos.lat, sos.lng);
-  res.json({
-    address: result?.address || null,
-    provider: result?.provider || null,
-    lat: sos.lat,
-    lng: sos.lng
-  });
 }
 
 async function accept(req, res) {
@@ -166,4 +152,4 @@ async function assign(req, res) {
   res.json({ sos: payload });
 }
 
-module.exports = { list, create, mine, location, accept, updateStatus, assign };
+module.exports = { list, create, mine, accept, updateStatus, assign };

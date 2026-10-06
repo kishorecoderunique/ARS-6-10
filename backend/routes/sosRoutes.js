@@ -26,7 +26,6 @@ const phoneCreateLimit = rateLimit({
 
 router.post('/', ipCreateLimit, phoneCreateLimit, validate(schemas.createSos), asyncHandler(controller.create));
 router.get('/mine', requireAuth, requireRole('rescuer'), asyncHandler(controller.mine));
-router.get('/:id/location', requireAuth, requireAnyRole('rescuer', 'admin'), validate(schemas.sosId), asyncHandler(controller.location));
 router.get('/', requireAuth, requireAnyRole('rescuer', 'admin'), validate(schemas.sosQuery), asyncHandler(controller.list));
 router.patch('/:id/accept', requireAuth, requireRole('rescuer'), validate(schemas.sosId), asyncHandler(controller.accept));
 router.patch('/:id/status', requireAuth, requireRole('rescuer'), validate(schemas.status), asyncHandler(controller.updateStatus));

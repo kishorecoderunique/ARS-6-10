@@ -53,7 +53,7 @@ The commands below use `npm.cmd` for Windows PowerShell. In Command Prompt, macO
 
 ### Deploy to Vercel
 
-The project includes a Vercel Express entry point at [`server.js`](./server.js). Its build command copies the existing frontend files into `public/` so Vercel can serve them as static assets, while API requests are handled by Express. Connect this GitHub repository to Vercel and set `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and `JWT_SECRET` for Production in the Vercel project settings. The app uses Vercel's assigned production domain for CORS by default; if you use a custom domain, also set `FRONTEND_URL` to its origin (for example, `https://your-domain.com`). Then deploy the latest commit. Do not set `LOCAL_DEMO_MODE=true` in Vercel.
+The project includes a Vercel Node.js entry point at [`server.js`](./server.js). Connect the GitHub repository to Vercel and set `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and `JWT_SECRET` for Production in the Vercel project settings. The app uses Vercel's assigned production domain for CORS by default; if you use a custom domain, also set `FRONTEND_URL` to its origin (for example, `https://your-domain.com`). Then deploy the latest commit. Do not set `LOCAL_DEMO_MODE=true` in Vercel. The entry point includes the static frontend, API, and Socket.IO server in the Vercel function.
 
 ## API and real-time updates
 
@@ -72,7 +72,7 @@ In development, `SMS_PROVIDER=console` prints the reset OTP to the server termin
 
 ### Google Maps
 
-For interactive maps and in-dashboard directions, add a Google Maps browser key locally to `GOOGLE_MAPS_API_KEY` in `assets/js/config.js`. Restrict it to the required APIs and allowed website origins, and never commit a real key. Set `GOOGLE_GEOCODING_KEY` in `.env` if SOS creation should resolve coordinates to a human-readable address server-side. Enable Maps JavaScript API, Routes API for in-dashboard directions, and Geocoding API for reverse geocoding as needed.
+Set the browser key in `assets/js/config.js` for rendering maps and drawing dashboard routes. Set `GOOGLE_GEOCODING_KEY` in `.env` if SOS creation should resolve coordinates to a human-readable address server-side. Enable Maps JavaScript API, Routes API for in-dashboard directions, and Geocoding API for reverse geocoding as needed. Restrict keys to the required APIs and origins.
 
 ## Validation and behavior
 

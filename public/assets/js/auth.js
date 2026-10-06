@@ -32,6 +32,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const progressDots = document.querySelector('.step-progress-dots');
 
   let selectedRole = window.ARS_State.getLastSelectedRole() || 'rescuer';
+  let loginAttemptStarted = false;
+  let healthCheckTimer = null;
 
   // Check URL query params if role forced
   const urlParams = new URLSearchParams(window.location.search);
@@ -41,6 +43,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // --- Initialize Selected Role UI ---
   updateRoleUI(selectedRole);
+  monitorApiHealth();
 
   if (roleRescuerBtn) {
     roleRescuerBtn.addEventListener('click', () => {
@@ -139,6 +142,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (loginForm) {
     loginForm.addEventListener('submit', async (e) => {
       e.preventDefault();
+      loginAttemptStarted = true;
       const phone = document.getElementById('login-phone').value.trim();
       const password = document.getElementById('login-password').value.trim();
       const submitBtn = document.getElementById('login-submit-btn');
@@ -360,15 +364,34 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // Alert Utility
+  function monitorApiHealth() {
+    const check = async () => {
+      const health = await window.ARS_API.checkHealth();
+      if (health.ok) {
+        if (healthCheckTimer) clearInterval(healthCheckTimer);
+        if (alertContainer?.dataset.kind === 'api-health') clearAlert();
+        return;
+      }
+      if (!loginAttemptStarted && (!alertContainer.textContent || alertContainer.dataset.kind === 'api-health')) {
+        showAlert(health.message || 'The backend is running but its database is not connected.', 'error');
+        alertContainer.dataset.kind = 'api-health';
+      }
+    };
+    check();
+    healthCheckTimer = setInterval(check, 3000);
+  }
+
   function showAlert(msg, type) {
     if (!alertContainer) return;
     alertContainer.textContent = msg;
     alertContainer.className = `alert-message active alert-${type}`;
+    alertContainer.dataset.kind = 'form';
   }
 
   function clearAlert() {
     if (!alertContainer) return;
     alertContainer.className = 'alert-message';
     alertContainer.textContent = '';
+    delete alertContainer.dataset.kind;
   }
 });

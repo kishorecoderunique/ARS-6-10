@@ -1,10 +1,13 @@
 const { listNotifications, markNotificationRead, markAllNotificationsRead } = require('../services/data');
+const { decryptMessage } = require('../utils/decryption');
 
 async function list(req, res) {
   const notifications = await listNotifications(req.user);
+  const isAdmin = req.user && req.user.role === 'admin';
   res.json({ notifications: notifications.map(item => ({
     ...item,
     id: String(item._id),
+    message: isAdmin ? decryptMessage(item.message) : item.message,
     timestamp: new Date(item.createdAt).getTime(),
     title: ({ new_sos: 'New SOS', accepted: 'SOS Accepted', resolved: 'SOS Resolved', approval: 'Rescuer Approval' })[item.type] || 'Notification'
   })) });
